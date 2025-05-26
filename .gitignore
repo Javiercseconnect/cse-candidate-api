@@ -1,0 +1,21 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Next.js build output
+/.next/
+/out/
+
+# Local environment variables
+.env.local
+.env*.local
+
+# IDE / Editor specific
+.vscode/
+*.swp
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
