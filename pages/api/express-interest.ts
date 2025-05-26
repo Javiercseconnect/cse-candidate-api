@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { MailerSend, EmailParams, Sender, Recipient } from "mailersend-node";
+import { MailerSend, EmailParams, Sender, Recipient } from "mailersend"; // Changed from mailersend-node
 import { logInterestExpression } from '@/lib/airtable';
 
 interface ExpressInterestRequest {
