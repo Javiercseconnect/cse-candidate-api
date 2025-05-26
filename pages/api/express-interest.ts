@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import nodemailer from 'nodemailer';
-import { logInterestExpression } from '@/lib/airtable'; // Adjusted import
+import { MailerSend, EmailParams, Sender, Recipient } from "mailersend-node";
+import { logInterestExpression } from '@/lib/airtable';
 
 interface ExpressInterestRequest {
   candidateId: string;
@@ -31,6 +31,7 @@ export default async function handler(
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    // Log the interest expression to Airtable (optional)
     try {
       await logInterestExpression(candidateId, {
         name: clientName,
@@ -44,31 +45,22 @@ export default async function handler(
       // Continue even if Airtable logging fails
     }
 
-    if (
-      !process.env.SMTP_HOST ||
-      !process.env.SMTP_PORT ||
-      !process.env.SMTP_USER ||
-      !process.env.SMTP_PASS ||
-      !process.env.NOTIFICATION_EMAIL
-    ) {
-      console.error('API: Express Interest - SMTP env vars not configured');
-      // Do not throw an error that would expose config issues to client,
-      // but log it and potentially send a generic success if Airtable log worked,
-      // or a specific error if email is critical. For now, let's assume email is critical.
-      return res.status(500).json({ message: 'Email server configuration error on server.' });
+    // --- MailerSend Integration ---
+    if (!process.env.MAILERSEND_API_KEY || !process.env.NOTIFICATION_EMAIL) {
+      console.error('API: Express Interest - MailerSend API Key or Notification Email env var not configured');
+      return res.status(500).json({ message: 'Email server configuration error on server (MailerSend).' });
     }
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_PORT === '465', // True for 465, false for other ports like 587
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
+    const mailerSend = new MailerSend({
+      apiKey: process.env.MAILERSEND_API_KEY,
     });
 
-    const emailContent = `
+    const fromSender = new Sender("info@cseconnect.ie", "CSE Connect Notifications");
+    const adminRecipient = [new Recipient(process.env.NOTIFICATION_EMAIL, "Admin Team")];
+    const clientRecipient = [new Recipient(email, clientName)];
+
+    // 1. Email to Admin
+    const adminEmailHtml = `
       <h2>New Interest Expression - CSE Connect Candidate Dashboard</h2>
       <h3>Client Information:</h3>
       <ul>
@@ -84,15 +76,17 @@ export default async function handler(
       ${notes ? `<h3>Additional Notes:</h3><p>${notes}</p>` : ''}
       <hr><p><em>This notification was sent from the CSE Connect Candidate Dashboard.</em></p>
     `;
+    const adminEmailParams = new EmailParams()
+      .setFrom(fromSender)
+      .setTo(adminRecipient)
+      .setSubject(`New Interest Expression - ${organization} for Candidate ID ${candidateId}`)
+      .setHtml(adminEmailHtml);
 
-    await transporter.sendMail({
-      from: `"CSE Connect Notifications" <${process.env.SMTP_USER}>`, // Using a display name
-      to: process.env.NOTIFICATION_EMAIL,
-      subject: `New Interest Expression - ${organization} for Candidate ID ${candidateId}`,
-      html: emailContent,
-    });
+    await mailerSend.email.send(adminEmailParams);
+    console.log(`Admin notification email sent to ${process.env.NOTIFICATION_EMAIL} via MailerSend.`);
 
-    const confirmationContent = `
+    // 2. Confirmation Email to Client
+    const clientConfirmationHtml = `
       <h2>Thank you for your interest!</h2>
       <p>Dear ${clientName},</p>
       <p>Thank you for expressing interest in one of our healthcare professionals through the CSE Connect platform.</p>
@@ -107,23 +101,31 @@ export default async function handler(
       <p>Best regards,<br>The CSE Connect Team</p>
       <hr><p><em>CSE Connect - Connecting Healthcare Professionals</em></p>
     `;
-
-    await transporter.sendMail({
-      from: `"CSE Connect Team" <${process.env.SMTP_USER}>`, // Using a display name
-      to: email, // Client's email
-      subject: 'Thank you for your interest - CSE Connect',
-      html: confirmationContent,
-    });
+    const clientEmailParams = new EmailParams()
+      .setFrom(fromSender) // Using the same verified sender
+      .setTo(clientRecipient)
+      .setSubject('Thank you for your interest - CSE Connect')
+      .setHtml(clientConfirmationHtml);
+      
+    await mailerSend.email.send(clientEmailParams);
+    console.log(`Client confirmation email sent to ${email} via MailerSend.`);
 
     res.status(200).json({ 
       message: 'Interest expression submitted successfully',
       success: true 
     });
 
-  } catch (error) {
-    console.error('API: Express Interest - Error processing interest expression:', error);
+  } catch (error: any) {
+    console.error('API: Express Interest - Error processing interest expression with MailerSend:', error.body || error.message || error);
+    // MailerSend errors often have details in error.body
+    let errorMessage = 'Failed to process interest expression.';
+    if (error.body && error.body.message) {
+        errorMessage = `MailerSend Error: ${error.body.message}`;
+    } else if (error.message) {
+        errorMessage = error.message;
+    }
     res.status(500).json({ 
-      message: 'Failed to process interest expression',
+      message: errorMessage,
       success: false 
     });
   }

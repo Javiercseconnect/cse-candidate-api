@@ -13,7 +13,8 @@
     "react": "18",
     "react-dom": "18",
     "airtable": "^0.12.2",
-    "nodemailer": "^6.9.7"
+    "nodemailer": "^6.9.7",
+    "mailersend-node": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "20",
