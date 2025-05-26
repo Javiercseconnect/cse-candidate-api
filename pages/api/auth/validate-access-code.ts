@@ -18,15 +18,16 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ValidationResponse>
 ) {
+  // Handle OPTIONS preflight request for CORS
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ isValid: false, message: 'Method not allowed' });
   }
 
-  const { accessCode } = req.body;
-
-  if (!accessCode || typeof accessCode !== 'string') {
-    return res.status(400).json({ isValid: false, message: 'Access code is required' });
-  }
+  const { accessCode } = req.body; // Added missing line
 
   if (!process.env.AIRTABLE_CAMPAIGNS_TABLE_ID || !process.env.AIRTABLE_BASE_ID || !process.env.AIRTABLE_API_KEY) {
     console.error('API: Validate Access Code - Airtable env vars not configured');
